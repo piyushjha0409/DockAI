@@ -6,3 +6,10 @@ pydantic
 aiofiles
 biopython
 python-multipart
+py3Dmol 
+matplotlib 
+biopython 
+rdkit 
+numpy
+reportlab
+google-generativeai

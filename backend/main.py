@@ -1,10 +1,11 @@
 import io
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
-import aiofiles
+from fastapi import FastAPI, HTTPException, UploadFile, File
 import os
-from models import UploadedFile
-from database import init_db
-import Bio.PDB
+from utils.parser import parse_pdb_file
+from utils.llm_integration import generate_report_from_parsed_data
+from utils.visualization import create_pdb_visualization
+from utils.pdf_generator import create_pdf_report
+from typing import Optional, List
 
 app = FastAPI()
 
@@ -12,79 +13,105 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.on_event("startup")
-async def startup():
-    await init_db()
-    print("Database initialized")
-
-@app.post("/upload/")
-async def upload_file(file: UploadFile = File(...)):
-    file_location = f"{UPLOAD_DIR}/{file.filename}"
-
-    async with aiofiles.open(file_location, "wb") as out_file:
-        content = await file.read()
-        await out_file.write(content)
-
-    db_entry = await UploadedFile.create(filename=file.filename, file_path=file_location)
-    
-    return {"message": "File uploaded", "file_id": db_entry.id, "filename": db_entry.filename}
 
 
 @app.post("/read-pdb-file/")
-async def read_pdb_file(file: UploadFile = File(...)):
+async def parse_docking_file(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        parsed_data = await parse_pdb_file(content)
+        
+        llm_report = await generate_report_from_parsed_data(parsed_data)
+        
+        pdf_report = await create_pdf_report(llm_report)
+        
+        return io.BytesIO(pdf_report)
+    except HTTPException:
+        raise
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=f"Error parsing PDB file: {str(err)}")
+
+
+@app.post("/visualize-pdb/")
+async def visualize_pdb_file(
+    file: UploadFile = File(...),
+    visualization_type: str = "standard",
+    binding_residues: Optional[List[str]] = None,
+    highlight_atoms: Optional[List[str]] = None,
+    width: int = 800,
+    height: int = 600,
+    style: str = "cartoon",
+    surface_opacity: float = 0.5,
+    background_color: str = "white"
+):
+    """
+    Create and return a visualization for a PDB file.
+    
+    Args:
+        file: The PDB file to visualize
+        visualization_type: Type of visualization to create
+            - "standard": Basic 3D representation
+            - "binding_site": Highlighting binding residues
+            - "2d": 2D representation
+            - "electrostatic": Electrostatic surface
+        binding_residues: List of residue IDs to highlight (for binding_site mode)
+        highlight_atoms: List of atom IDs to highlight
+        width: Width of the visualization in pixels
+        height: Height of the visualization in pixels
+        style: Visualization style ('cartoon', 'stick', 'sphere', 'line')
+        surface_opacity: Opacity of molecular surface (0-1)
+        background_color: Background color of the viewer
+    
+    Returns:
+        Visualization result (HTML content or base64 encoded image)
+    """
     try:
         content = await file.read()
         
-        file_like_object = io.StringIO(content.decode('utf-8'))
+        visualization = await create_pdb_visualization(
+            pdb_content=content,
+            visualization_type=visualization_type,
+            binding_residues=binding_residues,
+            highlight_atoms=highlight_atoms,
+            width=width,
+            height=height,
+            style=style,
+            surface_opacity=surface_opacity,
+            background_color=background_color
+        )
         
-        pdbparser = Bio.PDB.PDBParser(QUIET=True)
-        struct = pdbparser.get_structure("uploaded_structure", file_like_object)
-        
-        model_data = []
-        chains_data = []
-        residues_data = []
-        atoms_data = []
+        return visualization
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Visualization error: {str(e)}")
 
-        for model in struct.get_models():
-            for chain in model.get_chains():
-                print(chain)
-            model_data.append({
-                "id": model.id,
-                "serial_num": model.serial_num
-            })
-        
-        for chain in struct.get_chains():
-            print(chain)
-            chains_data.append({
-                "id": chain.id,
-                "full_id": chain.full_id
-            })
-            
-        for residue in struct.get_residues():
-            residues_data.append({
-                "resname": residue.resname,
-                "id": residue.id[1],
-                "full_id": str(residue.full_id)
-            })
-            
-        for atom in struct.get_atoms():
-            atoms_data.append({
-                "name": atom.name,
-                "element": atom.element,
-                "coords": atom.coord.tolist(),
-                "serial_number": atom.serial_number if hasattr(atom, 'serial_number') else None,
-                "full_id": str(atom.full_id)
-            })
 
-        return {
-            "structure_id": struct.id,
-            "num_chains": len(chains_data),
-            "num_residues": len(residues_data),
-            "num_atoms": len(atoms_data),
-            "model_count": len(struct),
-            "models": model_data,
-            "chains": chains_data,
-            "residues": residues_data,
-            "atoms": atoms_data
-        }
-    except Exception as err:
-        raise HTTPException(status_code=400, detail=f"Error parsing PDB file: {str(err)}")
+# @app.get("/generate_docking_report/{file_id}")
+# async def generate_docking_report(file_id: int): 
+#     """
+#     Generate a PDF report for a given uploaded PDB file
+
+#     Arguments: 
+#         file_id: ID of the uploaded PDB file
+
+#     Returns: 
+#         PDF file response
+#     """
+
+#     file_record = await UplaodedFile.get_or_none(id=file_id)
+#     if not file_record:
+#         raise HTTPException(status_code=404, detail="File not found")
+
+#     file_path = file_record.file_path
+
+
+#     # Check if the file exists 
+
+#     if not os.path.exists(file_path): 
+#         raise HTTPException(status_code=404, detail="File not found at disk")
+
+#     try: 
+
+#         #Read file content 
+#         async with aiofiles.   
