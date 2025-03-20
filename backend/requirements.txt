@@ -1,8 +1,0 @@
-fastapi
-uvicorn
-tortoise-orm
-asyncpg
-pydantic
-aiofiles
-biopython
-python-multipart
