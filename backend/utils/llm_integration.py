@@ -1,12 +1,8 @@
-import os
-import json
-from typing import Dict, Any, List, Tuple, Optional
-from pathlib import Path
-import logging
-
-# Google Gemini API
 import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError
+import json
+from typing import Dict, Any
+import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -24,7 +20,7 @@ def generate_report_from_parsed_data(parsed_data: Dict[str, Any]) -> Dict[str, A
     """
     try:
         # Initialize the Gemini model
-        api_key = os.environ.get("")
+        api_key = "AIzaSyBzRAnoVD7l3yGOWYJhBdd4MB6pePx7DYs"
         if not api_key:
             logger.error("No Google API key provided. Set GOOGLE_API_KEY environment variable.")
             return {"error": "API key is required", "status": "failed"}

@@ -1,6 +1,5 @@
 import io
 from fastapi import FastAPI, HTTPException, UploadFile, File
-import os
 from utils.parser import parse_pdb_file
 from utils.llm_integration import generate_report_from_parsed_data
 from utils.visualization import create_pdb_visualization
@@ -9,14 +8,13 @@ from typing import Optional, List
 
 app = FastAPI()
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 @app.on_event("startup")
+async def startup_event():
+    print("Application started successfully")
 
 
 @app.post("/read-pdb-file/")
-async def parse_docking_file(file: UploadFile = File(...)):
+async def parse_docking_file(file: UploadFile):
     try:
         content = await file.read()
         parsed_data = await parse_pdb_file(content)
@@ -84,34 +82,4 @@ async def visualize_pdb_file(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Visualization error: {str(e)}")
-
-
-# @app.get("/generate_docking_report/{file_id}")
-# async def generate_docking_report(file_id: int): 
-#     """
-#     Generate a PDF report for a given uploaded PDB file
-
-#     Arguments: 
-#         file_id: ID of the uploaded PDB file
-
-#     Returns: 
-#         PDF file response
-#     """
-
-#     file_record = await UplaodedFile.get_or_none(id=file_id)
-#     if not file_record:
-#         raise HTTPException(status_code=404, detail="File not found")
-
-#     file_path = file_record.file_path
-
-
-#     # Check if the file exists 
-
-#     if not os.path.exists(file_path): 
-#         raise HTTPException(status_code=404, detail="File not found at disk")
-
-#     try: 
-
-#         #Read file content 
-#         async with aiofiles.   
+        raise HTTPException(status_code=500, detail=f"Visualization error: {str(e)}")  
