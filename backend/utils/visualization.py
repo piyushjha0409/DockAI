@@ -7,6 +7,10 @@ from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple, Union
+import plotly.express as px
+import plotly.graph_objects as go
+from .parser import read_pdb_to_dataframe
+import json
 
 class MolecularVisualizer:
     """Class for visualizing molecular structures from PDB files."""
@@ -403,3 +407,158 @@ async def create_pdb_visualization(pdb_content: Union[str, bytes],
         
     else:
         raise ValueError(f"Unsupported visualization type: {visualization_type}")
+
+async def create_pdb_visualization(
+    pdb_content: bytes,
+    visualization_type: str = "standard",
+    binding_residues: Optional[List[str]] = None,
+    highlight_atoms: Optional[List[str]] = None,
+    width: int = 800,
+    height: int = 600,
+    style: str = "cartoon",
+    surface_opacity: float = 0.5,
+    background_color: str = "white"
+) -> Dict[str, Any]:
+    """
+    Create a visualization of a PDB structure.
+    
+    Args:
+        pdb_content (bytes): PDB file content
+        visualization_type (str): Type of visualization
+        binding_residues (List[str], optional): Residues to highlight
+        highlight_atoms (List[str], optional): Atoms to highlight
+        width (int): Width of visualization
+        height (int): Height of visualization
+        style (str): Visualization style
+        surface_opacity (float): Surface opacity
+        background_color (str): Background color
+        
+    Returns:
+        Dict[str, Any]: Visualization data with HTML content
+    """
+    try:
+        # Parse PDB file to DataFrame
+        df, header = await read_pdb_to_dataframe(pdb_content)
+        
+        # Create base figure
+        if visualization_type == "standard":
+            fig = px.scatter_3d(
+                df, 
+                x='x_coord', 
+                y='y_coord', 
+                z='z_coord', 
+                color='element_symbol',
+                hover_data=['atom_name', 'residue_name', 'chain_id', 'residue_number'],
+                title=f"PDB Structure Visualization"
+            )
+            fig.update_traces(marker_size=4)
+            
+        elif visualization_type == "binding_site":
+            # Filter for binding residues if provided
+            if binding_residues:
+                binding_mask = df['chain_id'] + ':' + df['residue_number'].astype(str)
+                binding_mask = binding_mask.isin(binding_residues)
+                
+                # Create a color column
+                df['color'] = 'Other'
+                df.loc[binding_mask, 'color'] = 'Binding Site'
+                
+                fig = px.scatter_3d(
+                    df, 
+                    x='x_coord', 
+                    y='y_coord', 
+                    z='z_coord', 
+                    color='color',
+                    color_discrete_map={'Binding Site': 'red', 'Other': 'lightgrey'},
+                    hover_data=['atom_name', 'residue_name', 'chain_id', 'residue_number'],
+                    title=f"Binding Site Visualization"
+                )
+                fig.update_traces(marker_size=4)
+            else:
+                fig = px.scatter_3d(
+                    df, 
+                    x='x_coord', 
+                    y='y_coord', 
+                    z='z_coord', 
+                    color='element_symbol',
+                    hover_data=['atom_name', 'residue_name', 'chain_id', 'residue_number'],
+                    title=f"PDB Structure Visualization"
+                )
+                fig.update_traces(marker_size=4)
+                
+        elif visualization_type == "electrostatic":
+            # Use element charge as proxy for electrostatic potential
+            charge_map = {
+                'O': -0.5,   # Oxygen (negative)
+                'N': -0.5,   # Nitrogen (negative)
+                'S': -0.3,   # Sulfur (slightly negative)
+                'P': -0.3,   # Phosphorus (slightly negative)
+                'C': 0.0,    # Carbon (neutral)
+                'H': 0.1,    # Hydrogen (slightly positive)
+                'MG': 2.0,   # Magnesium (positive)
+                'CA': 2.0,   # Calcium (positive)
+                'ZN': 2.0,   # Zinc (positive)
+                'FE': 2.0,   # Iron (positive)
+            }
+            
+            # Apply charge map (default to 0 for unknown elements)
+            df['charge'] = df['element_symbol'].map(lambda x: charge_map.get(x, 0))
+            
+            fig = px.scatter_3d(
+                df, 
+                x='x_coord', 
+                y='y_coord', 
+                z='z_coord', 
+                color='charge',
+                color_continuous_scale='RdBu_r',  # Blue negative, Red positive
+                hover_data=['atom_name', 'residue_name', 'chain_id', 'residue_number'],
+                title=f"Electrostatic Visualization"
+            )
+            fig.update_traces(marker_size=4)
+            
+        elif visualization_type == "2d":
+            # For 2D visualization, we'll use a 2D projection of the 3D structure
+            # Extract alpha carbon atoms for a simpler representation
+            ca_atoms = df[df['atom_name'] == 'CA']
+            
+            fig = px.scatter(
+                ca_atoms, 
+                x='x_coord', 
+                y='y_coord', 
+                color='chain_id',
+                hover_data=['residue_name', 'residue_number'],
+                title=f"2D Projection (X-Y Plane)"
+            )
+        
+        # Update layout
+        fig.update_layout(
+            width=width,
+            height=height,
+            paper_bgcolor=background_color,
+            plot_bgcolor=background_color,
+            scene=dict(
+                xaxis=dict(backgroundcolor=background_color),
+                yaxis=dict(backgroundcolor=background_color),
+                zaxis=dict(backgroundcolor=background_color),
+            ) if visualization_type != "2d" else None
+        )
+        
+        # Convert to HTML
+        html_content = fig.to_html(include_plotlyjs=True, full_html=False)
+        
+        # Return visualization data
+        return {
+            "type": "html",
+            "content": html_content,
+            "visualization_type": visualization_type,
+            "structure_info": {
+                "title": header.get("title", "Unknown") if header else "Unknown",
+                "pdb_id": header.get("identifier", "Unknown") if header else "Unknown",
+                "chains": len(df['chain_id'].unique()),
+                "residues": len(df[['chain_id', 'residue_number']].drop_duplicates()),
+                "atoms": len(df)
+            }
+        }
+        
+    except Exception as e:
+        raise ValueError(f"Error creating visualization: {str(e)}")

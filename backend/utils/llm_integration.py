@@ -8,7 +8,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def generate_report_from_parsed_data(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
+async def generate_report_from_parsed_data(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Generate a comprehensive report from already parsed PDB data using Gemini Flash 2.0.
     
@@ -26,10 +26,10 @@ def generate_report_from_parsed_data(parsed_data: Dict[str, Any]) -> Dict[str, A
             return {"error": "API key is required", "status": "failed"}
             
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('models/gemini-flash-2.0')
+        model = genai.GenerativeModel('gemini-1.5-flash-002')
         
         # Prepare the prompt with parsed data
-        prompt = _create_analysis_prompt(parsed_data)
+        prompt = _create_analysis_prompt2(parsed_data)
         
         # Generate content with Gemini
         response = model.generate_content(prompt)
@@ -81,6 +81,79 @@ def _create_analysis_prompt(data: Dict[str, Any]) -> str:
     
     Format the report with clear headings and subheadings for inclusion in a scientific document.
     """
+    return prompt
+
+def _create_analysis_prompt2(data: Dict[str, Any]) -> str:
+    """Create a detailed prompt for the Gemini model based on the parsed data."""
+    
+    # Extract key information
+    structure_id = data.get('structure_id', 'Unknown')
+    ligands = data.get('ligands', [])
+    ligand_names = [lig.get('name', 'Unknown') for lig in ligands]
+    interactions = data.get('interactions', [])
+    is_docking_result = data.get('is_docking_result', False)
+    
+    # Extract chains information
+    chains = data.get('chains', [])
+    chain_count = len(chains) if chains else data.get('chain_count', 0)
+    
+    # Get docking scores if available
+    docking_scores = data.get('docking_scores', [])
+    binding_energies = data.get('binding_energies', [])
+    
+    # Build a detailed interaction section if we have docking data
+    if is_docking_result and interactions:
+        interaction_details = "## Docking Results:\n"
+        for i, interaction in enumerate(interactions):
+            interaction_details += f"- Mode {i+1}:\n"
+            interaction_details += f"  - Binding Energy: {interaction.get('binding_energy', 'N/A')} kcal/mol\n"
+            interaction_details += f"  - Docking Score: {interaction.get('docking_score', 'N/A')}\n"
+            if 'rmsd_lb' in interaction:
+                interaction_details += f"  - RMSD from reference: {interaction.get('rmsd_lb', 'N/A')}\n"
+    else:
+        interaction_details = "No docking data available."
+    
+    # Create the prompt
+    if is_docking_result:
+        prompt = f"""
+        As a pharmaceutical analysis expert, generate a detailed report on the molecular docking results for structure {structure_id}.
+        
+        ## Structure Information:
+        - Structure ID: {structure_id}
+        - Number of chains: {chain_count}
+        - Ligands present: {', '.join(ligand_names) if ligand_names else 'None detected'}
+        
+        {interaction_details}
+        
+        Please analyze these docking results and provide:
+        1. An executive summary of the docking results
+        2. Detailed analysis of binding affinities and interaction patterns
+        3. Evaluation of potential drug efficacy based on binding energies
+        4. Comparison with typical values for successful drugs in this class
+        5. Recommendations for optimization if applicable
+        
+        Format the report with clear headings and subheadings for inclusion in a scientific document.
+        """
+    else:
+        prompt = f"""
+        As a structural biology expert, generate a detailed report on the protein structure {structure_id}.
+        
+        ## Structure Information:
+        - Structure ID: {structure_id}
+        - Number of chains: {chain_count}
+        - Ligands present: {', '.join(ligand_names) if ligand_names else 'None detected'}
+        
+        Please analyze this structure and provide:
+        1. An executive summary of the structural features
+        2. Analysis of potential binding sites based on structure
+        3. Discussion of structural features relevant to drug development
+        4. Recommendations for further studies
+        
+        Note: This is a structural analysis ONLY. No docking or binding affinity calculations have been performed.
+        
+        Format the report with clear headings and subheadings for inclusion in a scientific document.
+        """
+    
     return prompt
 
 def _structure_gemini_response(response_text: str, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
