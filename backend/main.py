@@ -1,15 +1,18 @@
 import io
 import tempfile
 import os
+import pandas as pd
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile, File, Response
 from utils.parser import parse_pdb_file, parse_pdbqt_file, read_pdb_to_dataframe
 from utils.llm_integration import generate_report_from_parsed_data
 from utils.visualization import create_pdb_visualization
 from utils.pdf_generator import create_pdf_report
 from typing import Optional, List, Dict
-import pandas as pd
+from ipfs.pinata_post import upload_to_pinata  # Import the Pinata upload function
 from utils.read_to_dataframe import read_pdb_to_dataframe
 
+load_dotenv()
 app = FastAPI()
 
 @app.on_event("startup")
@@ -26,14 +29,35 @@ async def parse_docking_file(file: UploadFile):
         llm_report = await generate_report_from_parsed_data(parsed_data)
         
         pdf_report = await create_pdf_report(llm_report)
-        
-        return Response(
-            content=pdf_report,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f"attachment; filename=docking_report_{file.filename}.pdf"
-            }
-        )
+
+        # Save the PDF to a temporary file
+        temp_file = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        temp_file.write(pdf_report)
+        temp_file_path = temp_file.name
+        temp_file.close()
+
+        # JWT Token for Pinata
+        PINATA_JWT_TOKEN = os.getenv("JWT")
+
+        # Upload to Pinata and get the CID
+        cid = upload_to_pinata(temp_file_path, PINATA_JWT_TOKEN)
+        if not cid:
+            raise HTTPException(status_code=500, detail="Failed to upload PDF to Pinata")
+
+        # Clean up the temporary file
+        os.unlink(temp_file_path)
+
+        # Return the CID along with the PDF file
+        return {
+            "cid": cid,
+            "pdf_report": Response(
+                content=pdf_report,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f"attachment; filename=docking_report_{file.filename}.pdf"
+                }
+            )
+        }
     except HTTPException as he:
         print(f"HTTP Exception: {he.detail}")
         raise

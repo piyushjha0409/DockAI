@@ -16,3 +16,4 @@ pandas
 py3dmol
 rdkit
 plotly
+python-dotenv
