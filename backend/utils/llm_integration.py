@@ -1,193 +1,93 @@
 import google.generativeai as genai
-from google.api_core.exceptions import GoogleAPIError
-import json
-from typing import Dict, Any
+from typing import List, Dict, Any
 import logging
+import datetime
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-async def generate_report_from_parsed_data(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
+
+def generate_docking_report(docking_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Generate a comprehensive report from already parsed PDB data using Gemini Flash 2.0.
-    
+    Generate a report analyzing docking results.
+
     Args:
-        parsed_data: Dictionary containing parsed structural and binding data from a PDB file
-        
+        docking_results: List of dictionaries containing docking mode information
+                        (mode, affinity, rmsd_lb, rmsd_ub)
+
     Returns:
-        Dictionary containing the structured report ready for PDF generation
+        Dictionary containing the structured report
     """
     try:
         # Initialize the Gemini model
-        api_key = "AIzaSyBzRAnoVD7l3yGOWYJhBdd4MB6pePx7DYs"
+        api_key = "AIzaSyBzRAnoVD7l3yGOWYJhBdd4MB6pePx7DYs"  # Add your API key here
         if not api_key:
-            logger.error("No Google API key provided. Set GOOGLE_API_KEY environment variable.")
+            logger.error("No Google API key provided")
             return {"error": "API key is required", "status": "failed"}
-            
+
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash-002')
+        model = genai.GenerativeModel("gemini-1.5-flash-002")
+
+        # Format the docking results for the prompt
+        docking_details = "## Docking Results:\n"
+        for result in docking_results:
+            mode = result.get("mode", "N/A")
+            affinity = result.get("affinity", "N/A")
+            rmsd_lb = result.get("rmsd_lb", "N/A")
+            rmsd_ub = result.get("rmsd_ub", "N/A")
+
+            docking_details += f"- Mode {mode}:\n"
+            docking_details += f"  - Binding Affinity: {affinity} kcal/mol\n"
+            docking_details += f"  - RMSD Lower Bound: {rmsd_lb}\n"
+            docking_details += f"  - RMSD Upper Bound: {rmsd_ub}\n"
+
+        # Create the prompt for analysis
+        prompt = f"""
+        As a pharmaceutical analysis expert, generate a detailed report on the molecular docking results provided.
         
-        # Prepare the prompt with parsed data
-        prompt = _create_analysis_prompt2(parsed_data)
+        {docking_details}
         
+        Please analyze these docking results and provide:
+        1. An executive summary of the docking results, highlighting the best binding modes
+        2. Detailed analysis of binding affinities across all modes, including discussion of the energetics
+        3. Evaluation of potential drug efficacy based on binding affinities, with particular attention to the modes with strongest binding
+        4. Analysis of RMSD values and what they indicate about binding site preferences
+        5. Recommendations for further optimization based on the observed binding patterns
+        
+        Format the report with clear headings and subheadings for inclusion in a scientific document.
+        Use tables and comparative analysis where appropriate.
+        """
+
         # Generate content with Gemini
         response = model.generate_content(prompt)
-        
-        # Structure the response into a report
-        structured_report = _structure_gemini_response(response.text, parsed_data)
-        
-        logger.info(f"Successfully generated report for structure {parsed_data.get('structure_id', 'unknown')}")
+
+        # Extract metrics for the report
+        binding_affinities = [
+            result["affinity"] for result in docking_results if "affinity" in result
+        ]
+        best_affinity = min(binding_affinities) if binding_affinities else None
+        best_mode = next(
+            (r["mode"] for r in docking_results if r.get("affinity") == best_affinity),
+            None,
+        )
+
+        # Create structured report
+        structured_report = {
+            "raw_report": response.text,
+            "best_binding_mode": best_mode,
+            "best_affinity": best_affinity,
+            "all_affinities": binding_affinities,
+            "docking_results": docking_results,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "status": "success",
+        }
+
+        logger.info("Successfully generated docking analysis report")
         return structured_report
-        
-    except GoogleAPIError as e:
-        logger.error(f"Gemini API error: {str(e)}")
-        return {"error": str(e), "status": "failed"}
+
     except Exception as e:
         logger.error(f"Error generating report: {str(e)}")
         return {"error": str(e), "status": "failed"}
-
-def _create_analysis_prompt(data: Dict[str, Any]) -> str:
-    """Create a detailed prompt for the Gemini model based on the parsed data."""
-    
-    # Extract key information
-    structure_id = data.get('structure_id', 'Unknown')
-    ligands = data.get('ligands', [])
-    ligand_names = [lig.get('name', 'Unknown') for lig in ligands]
-    interactions = data.get('interactions', [])
-    
-    # Extract chains information
-    chains = data.get('chains', [])
-    chain_count = len(chains)
-    
-    # Create the prompt
-    prompt = f"""
-    As a pharmaceutical analysis expert, generate a detailed report on the molecular docking results for protein-ligand complex {structure_id}.
-    
-    ## Structure Information:
-    - Structure ID: {structure_id}
-    - Number of chains: {chain_count}
-    - Ligands present: {', '.join(ligand_names) if ligand_names else 'None detected'}
-    
-    ## Docking Results:
-    {json.dumps(interactions, indent=2)}
-    
-    Please analyze these results and provide:
-    1. An executive summary of the docking results
-    2. Detailed analysis of binding affinities and interaction patterns
-    3. Evaluation of potential drug efficacy based on binding efficiencies
-    4. Comparison with typical values for successful drugs in this class
-    5. Recommendations for optimization if applicable
-    
-    Format the report with clear headings and subheadings for inclusion in a scientific document.
-    """
-    return prompt
-
-def _create_analysis_prompt2(data: Dict[str, Any]) -> str:
-    """Create a detailed prompt for the Gemini model based on the parsed data."""
-    
-    # Extract key information
-    structure_id = data.get('structure_id', 'Unknown')
-    ligands = data.get('ligands', [])
-    ligand_names = [lig.get('name', 'Unknown') for lig in ligands]
-    interactions = data.get('interactions', [])
-    is_docking_result = data.get('is_docking_result', False)
-    
-    # Extract chains information
-    chains = data.get('chains', [])
-    chain_count = len(chains) if chains else data.get('chain_count', 0)
-    
-    # Get docking scores if available
-    docking_scores = data.get('docking_scores', [])
-    binding_energies = data.get('binding_energies', [])
-    
-    # Build a detailed interaction section if we have docking data
-    if is_docking_result and interactions:
-        interaction_details = "## Docking Results:\n"
-        for i, interaction in enumerate(interactions):
-            interaction_details += f"- Mode {i+1}:\n"
-            interaction_details += f"  - Binding Energy: {interaction.get('binding_energy', 'N/A')} kcal/mol\n"
-            interaction_details += f"  - Docking Score: {interaction.get('docking_score', 'N/A')}\n"
-            if 'rmsd_lb' in interaction:
-                interaction_details += f"  - RMSD from reference: {interaction.get('rmsd_lb', 'N/A')}\n"
-    else:
-        interaction_details = "No docking data available."
-    
-    # Create the prompt
-    if is_docking_result:
-        prompt = f"""
-        As a pharmaceutical analysis expert, generate a detailed report on the molecular docking results for structure {structure_id}.
-        
-        ## Structure Information:
-        - Structure ID: {structure_id}
-        - Number of chains: {chain_count}
-        - Ligands present: {', '.join(ligand_names) if ligand_names else 'None detected'}
-        
-        {interaction_details}
-        
-        Please analyze these docking results and provide:
-        1. An executive summary of the docking results
-        2. Detailed analysis of binding affinities and interaction patterns
-        3. Evaluation of potential drug efficacy based on binding energies
-        4. Comparison with typical values for successful drugs in this class
-        5. Recommendations for optimization if applicable
-        
-        Format the report with clear headings and subheadings for inclusion in a scientific document.
-        """
-    else:
-        prompt = f"""
-        As a structural biology expert, generate a detailed report on the protein structure {structure_id}.
-        
-        ## Structure Information:
-        - Structure ID: {structure_id}
-        - Number of chains: {chain_count}
-        - Ligands present: {', '.join(ligand_names) if ligand_names else 'None detected'}
-        
-        Please analyze this structure and provide:
-        1. An executive summary of the structural features
-        2. Analysis of potential binding sites based on structure
-        3. Discussion of structural features relevant to drug development
-        4. Recommendations for further studies
-        
-        Note: This is a structural analysis ONLY. No docking or binding affinity calculations have been performed.
-        
-        Format the report with clear headings and subheadings for inclusion in a scientific document.
-        """
-    
-    return prompt
-
-def _structure_gemini_response(response_text: str, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Structure the raw LLM response into a formatted report."""
-    import datetime
-    
-    # Extract available metrics from parsed data
-    docking_scores = []
-    binding_energies = []
-    
-    for interaction in parsed_data.get('interactions', []):
-        if 'docking_score' in interaction:
-            docking_scores.append(interaction['docking_score'])
-        if 'binding_energy' in interaction:
-            binding_energies.append(interaction['binding_energy'])
-    
-    # Create structured report
-    structured_report = {
-        "structure_id": parsed_data.get('structure_id', 'Unknown'),
-        "raw_report": response_text,
-        "summary": "",  # Would parse from response_text in a more complete implementation
-        "binding_analysis": "",  # Would parse from response_text in a more complete implementation
-        "efficacy_evaluation": "",  # Would parse from response_text in a more complete implementation
-        "comparison": "",  # Would parse from response_text in a more complete implementation
-        "recommendations": "",  # Would parse from response_text in a more complete implementation
-        "docking_scores": docking_scores,
-        "binding_energies": binding_energies,
-        "timestamp": datetime.datetime.now().isoformat(),
-        "status": "success"
-    }
-    
-    # Add metadata to facilitate PDF generation
-    structured_report["has_ligands"] = len(parsed_data.get('ligands', [])) > 0
-    structured_report["ligand_count"] = len(parsed_data.get('ligands', []))
-    structured_report["chain_count"] = len(parsed_data.get('chains', []))
-    
-    return structured_report
