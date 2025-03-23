@@ -1,305 +1,440 @@
+import React, { useState, useCallback } from "react";
+import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
+import { Upload, X, AlertCircle, Check, FileDown } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { Boxes, FileText, X } from "lucide-react";
-import React, { useRef, useState } from "react";
 import { toast } from "sonner";
-import UploadAnimation from "./UploadAnimation";
+import MoleculeViewer from "./MoleculeViewer";
 
 interface FileUploaderProps {
-  maxSizeMB?: number;
-  allowedFileTypes?: string[];
+  maxSizeMB: number;
+  allowedFileTypes: string[];
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
-  maxSizeMB = 10,
-  allowedFileTypes = [".pdb", "chemical/x-pdb", "application/octet-stream"],
+  maxSizeMB,
+  allowedFileTypes,
 }) => {
-  const [dragActive, setDragActive] = useState<boolean>(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [uploadStatus, setUploadStatus] = useState<
-    "idle" | "uploading" | "success" | "error"
-  >("idle");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Convert maxSizeMB to bytes for comparison
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [visualizationData, setVisualizationData] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [activeModel, setActiveModel] = useState(0);
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
+  const containerRef = React.useRef<HTMLDivElement>(null);
 
-  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      // Check if we already have 2 files
+      if (files.length + acceptedFiles.length > 2) {
+        toast.error("Too many files", {
+          description:
+            "Please upload exactly one .txt file and one .pdbqt file.",
+        });
+        return;
+      }
 
-  const validateFile = (file: File): boolean => {
-    // Check file size
-    if (file.size > maxSizeBytes) {
-      toast.error(`File too large. Maximum size is ${maxSizeMB}MB.`);
-      return false;
-    }
-
-    // Check if it's a PDB file (by extension or MIME type)
-    const fileType = file.type;
-    const fileName = file.name;
-    const fileExtension = `.${fileName.split(".").pop()?.toLowerCase()}`;
-
-    if (
-      !fileExtension.includes(".pdb") &&
-      !allowedFileTypes.includes(fileType)
-    ) {
-      toast.error(
-        "Only .pdb file is supported for molecular docking analysis."
+      // Validate file types
+      const invalidFiles = acceptedFiles.filter(
+        (file) =>
+          !allowedFileTypes.some((type) =>
+            file.name.toLowerCase().endsWith(type)
+          )
       );
-      return false;
-    }
 
-    return true;
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const droppedFile = e.dataTransfer.files[0];
-      
-      if (validateFile(droppedFile)) {
-        setFile(droppedFile);
+      if (invalidFiles.length > 0) {
+        toast.error("Invalid file type", {
+          description: "Please upload only .txt and .pdbqt files.",
+        });
+        return;
       }
-    }
-  };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-
-    if (e.target.files && e.target.files.length > 0) {
-      const selectedFile = e.target.files[0];
-      
-      if (validateFile(selectedFile)) {
-        setFile(selectedFile);
+      // Check file sizes
+      const oversizedFiles = acceptedFiles.filter(
+        (file) => file.size > maxSizeBytes
+      );
+      if (oversizedFiles.length > 0) {
+        toast.error("File too large", {
+          description: `Maximum file size is ${maxSizeMB}MB.`,
+        });
+        return;
       }
+
+      // Combine existing and new files
+      const updatedFiles = [...files, ...acceptedFiles];
+
+      // If we already have a txt file and trying to add another txt file
+      const txtFiles = updatedFiles.filter((file) =>
+        file.name.toLowerCase().endsWith(".txt")
+      );
+      const pdbqtFiles = updatedFiles.filter((file) =>
+        file.name.toLowerCase().endsWith(".pdbqt")
+      );
+
+      if (txtFiles.length > 1) {
+        toast.error("Duplicate file type", {
+          description: "You can only upload one .txt file.",
+        });
+        return;
+      }
+
+      if (pdbqtFiles.length > 1) {
+        toast.error("Duplicate file type", {
+          description: "You can only upload one .pdbqt file.",
+        });
+        return;
+      }
+
+      setFiles(updatedFiles);
+    },
+    [files, allowedFileTypes, maxSizeBytes, maxSizeMB]
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "text/plain": [".txt"],
+      "application/octet-stream": [".pdbqt"],
+    },
+    maxSize: maxSizeBytes,
+  });
+
+  const removeFile = (index: number) => {
+    const newFiles = [...files];
+    newFiles.splice(index, 1);
+    setFiles(newFiles);
+
+    // Clear results if files are removed
+    if (newFiles.length === 0) {
+      setVisualizationData(null);
+      setPdfUrl(null);
     }
   };
 
-  const removeFile = () => {
-    setFile(null);
-  };
+  const handleUpload = async () => {
+    // Validate that we have exactly one .txt and one .pdbqt file before uploading
+    const txtFile = files.find((file) =>
+      file.name.toLowerCase().endsWith(".txt")
+    );
+    const pdbqtFile = files.find((file) =>
+      file.name.toLowerCase().endsWith(".pdbqt")
+    );
 
-  const handleUpload = () => {
-    if (!file) {
-      toast.error("Please select a PDB file to upload.");
+    if (!txtFile || !pdbqtFile) {
+      toast.error("Missing required files", {
+        description: "Please upload exactly one .txt file and one .pdbqt file.",
+      });
       return;
     }
 
-    setUploadStatus("uploading");
+    setUploading(true);
+    setUploadProgress(0);
+    setVisualizationData(null);
+    setPdfUrl(null);
 
     // Simulate upload progress
-    let progress = 0;
     const interval = setInterval(() => {
-      progress += 5;
-      setUploadProgress(progress);
+      setUploadProgress((prev) => {
+        if (prev >= 95) {
+          clearInterval(interval);
+          return prev;
+        }
+        return prev + 5;
+      });
+    }, 300);
 
-      if (progress >= 100) {
-        clearInterval(interval);
-        setUploadStatus("success");
-        toast.success("File processed successfully! Generating reports...");
+    try {
+      // Prepare form data
+      const formData = new FormData();
+      formData.append("result_file", txtFile);
+      formData.append("pdbqt_file", pdbqtFile);
+
+      // Send to combined endpoint
+      const response = await fetch(
+        "http://127.0.0.1:8000/process-docking-data",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
       }
-    }, 200);
-  };
 
-  const openFileSelector = () => {
-    if (inputRef.current) {
-      inputRef.current.click();
+      const data = await response.json();
+
+      clearInterval(interval);
+      setUploadProgress(100);
+
+      // Process PDF report
+      if (data.pdf_report_base64) {
+        const pdfData = new Uint8Array(
+          data.pdf_report_base64
+            .match(/.{1,2}/g)
+            .map((byte: string) => parseInt(byte, 16))
+        );
+        const blob = new Blob([pdfData], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        setPdfUrl(url);
+      }
+
+      // Process visualization data
+      if (data.visualization_data) {
+        setVisualizationData(data.visualization_data);
+      }
+
+      toast.success("Processing complete", {
+        description: "Your docking results have been processed successfully.",
+      });
+
+      // Stay on the same page to display results
+      setUploading(false);
+    } catch (error) {
+      console.error("Upload error:", error);
+      clearInterval(interval);
+      setUploading(false);
+
+      toast.error("Processing failed", {
+        description:
+          "There was an error processing your files. Please try again.",
+      });
     }
   };
 
-  const resetUpload = () => {
-    setFile(null);
-    setUploadProgress(0);
-    setUploadStatus("idle");
+  const getFileTypeEmoji = (fileName: string) => {
+    if (fileName.toLowerCase().endsWith(".txt")) return "📄";
+    if (fileName.toLowerCase().endsWith(".pdbqt")) return "🧬";
+    return "📁";
   };
 
-  // Format bytes to a human-readable format
-  const formatBytes = (bytes: number, decimals = 2) => {
-    if (bytes === 0) return "0 Bytes";
+  const getUploadStatus = () => {
+    const hasTxt = files.some((file) =>
+      file.name.toLowerCase().endsWith(".txt")
+    );
+    const hasPdbqt = files.some((file) =>
+      file.name.toLowerCase().endsWith(".pdbqt")
+    );
 
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+    return (
+      <div className="mt-4 mb-2">
+        <p className="font-medium text-sm mb-2">Required files:</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center">
+            {hasTxt ? (
+              <Check size={16} className="text-green-500 mr-2" />
+            ) : (
+              <AlertCircle size={16} className="text-amber-500 mr-2" />
+            )}
+            <span
+              className={`text-sm ${
+                hasTxt ? "text-green-600" : "text-amber-600"
+              }`}
+            >
+              .txt output file {hasTxt ? "(Added)" : "(Required)"}
+            </span>
+          </div>
+          <div className="flex items-center">
+            {hasPdbqt ? (
+              <Check size={16} className="text-green-500 mr-2" />
+            ) : (
+              <AlertCircle size={16} className="text-amber-500 mr-2" />
+            )}
+            <span
+              className={`text-sm ${
+                hasPdbqt ? "text-green-600" : "text-amber-600"
+              }`}
+            >
+              .pdbqt file {hasPdbqt ? "(Added)" : "(Required)"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  // Truncate filename if too long
-  const truncateFilename = (filename: string, maxLength = 25) => {
-    if (filename.length <= maxLength) return filename;
+  // Results display section
+  const renderResults = () => {
+    if (!visualizationData && !pdfUrl) return null;
 
-    const extension = filename.split(".").pop();
-    const name = filename.substring(0, filename.lastIndexOf("."));
+    return (
+      <div className="mt-8 space-y-6 bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-900">Analysis Results</h2>
 
-    return `${name.substring(
-      0,
-      maxLength - extension!.length - 4
-    )}...${extension}`;
+        {visualizationData && (
+          <div className="space-y-4">
+            <MoleculeViewer
+              modelData={visualizationData}
+              activeModel={activeModel}
+              containerRef={containerRef}
+            />
+            {visualizationData.length > 1 && (
+              <div className="mt-2 flex space-x-2">
+                {visualizationData.map((_model: unknown, index: number) => (
+                  <button
+                    key={index}
+                    className={`px-3 py-1 text-sm rounded ${
+                      activeModel === index
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 hover:bg-gray-300"
+                    }`}
+                    onClick={() => setActiveModel(index)}
+                  >
+                    Model {index + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {pdfUrl && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-800">
+              Detailed Report
+            </h3>
+            <div className="flex space-x-4">
+              <a
+                href={pdfUrl}
+                download="docking_report.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <FileDown className="mr-2 h-4 w-4" />
+                Download PDF Report
+              </a>
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                View Report
+              </a>
+            </div>
+          </div>
+        )}
+
+        <Button
+          variant="outline"
+          onClick={() => {
+            setFiles([]);
+            setVisualizationData(null);
+            setPdfUrl(null);
+          }}
+          className="mt-4"
+        >
+          Process Another Docking Result
+        </Button>
+      </div>
+    );
   };
 
   return (
     <div className="w-full">
-      {uploadStatus === "idle" || uploadStatus === "uploading" ? (
+      {!uploading ? (
         <>
-          {/* File drop area - only show when no file is selected */}
-          {!file && (
-            <div
-              className={`relative h-64 w-full rounded-lg border-2 border-dashed transition-colors duration-300 ease-in-out
-              ${dragActive ? "border-blue-500 bg-blue-500/5" : "border-gray-300"}
-              bg-transparent
-              flex flex-col items-center justify-center p-6 mb-4`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-            >
-              <input
-                ref={inputRef}
-                type="file"
-                onChange={handleChange}
-                className="hidden"
-                accept=".pdb"
-              />
-
-              <div className="flex flex-col items-center justify-center space-y-4 pointer-events-none">
-                <div className="text-blue-600 rounded-full p-4 bg-blue-500/5">
-                  <Boxes size={36} strokeWidth={1.5} />
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-medium text-gray-700">
-                    Drag & drop file here
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    or click to browse your device
-                  </p>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Supported format: .pdb (Protein Data Bank files)
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Max size: {maxSizeMB}MB
-                  </p>
-                </div>
-              </div>
-
-              {/* Clickable overlay */}
-              <button
-                className="absolute inset-0 w-full h-full cursor-pointer focus:outline-none"
-                onClick={openFileSelector}
-                type="button"
-                aria-label="Select files"
-              />
-            </div>
-          )}
-
-          {/* Display selected file */}
-          {file && (
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">
-                Selected File
-              </h3>
-
-              <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 shadow-soft group hover:border-gray-300 transition-all duration-200">
-                <div className="flex items-center space-x-3">
-                  <div className="text-blue-600">
-                    <FileText size={24} strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">
-                      {truncateFilename(file.name)}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatBytes(file.size)}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={removeFile}
-                  className="text-gray-400 hover:text-red-500 transition-colors hover:cursor-pointer"
-                  aria-label="Remove file"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Upload button and progress */}
-          {uploadStatus === "uploading" ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-medium text-gray-700">
-                  Processing your file...
-                </p>
-                <p className="text-sm text-gray-500">{uploadProgress}%</p>
-              </div>
-              <Progress value={uploadProgress} className="h-2 bg-gray-100">
-                <div
-                  className="h-full bg-blue-600 rounded-full"
-                  style={{ width: `${uploadProgress}%` }}
-                ></div>
-              </Progress>
-            </div>
-          ) : (
-            file && (
-              <Button
-                onClick={handleUpload}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          {!visualizationData && !pdfUrl ? (
+            <>
+              <div
+                {...getRootProps()}
+                className={`border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors duration-200 ${
+                  isDragActive
+                    ? "border-blue-400 bg-blue-50"
+                    : "border-gray-300 hover:border-blue-300 hover:bg-blue-50/50"
+                }`}
               >
-                Process file
-              </Button>
-            )
+                <input {...getInputProps()} />
+                <div className="flex flex-col items-center justify-center text-center">
+                  <Upload
+                    className={`mb-3 ${
+                      isDragActive ? "text-blue-500" : "text-gray-400"
+                    }`}
+                    size={30}
+                  />
+                  <p className="text-sm font-medium text-gray-700 mb-1">
+                    {isDragActive
+                      ? "Drop the files here..."
+                      : "Drag & drop files here, or click to select"}
+                  </p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Please upload one .txt file and one .pdbqt file (max{" "}
+                    {maxSizeMB}
+                    MB each)
+                  </p>
+                </div>
+              </div>
+
+              {getUploadStatus()}
+
+              {files.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    Selected files:
+                  </p>
+                  <div className="space-y-2">
+                    {files.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-gray-50 p-3 rounded-md"
+                      >
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 mr-3 text-lg">
+                            {getFileTypeEmoji(file.name)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-700 truncate max-w-[200px]">
+                              {file.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {(file.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                          aria-label="Remove file"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6">
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handleUpload}
+                  disabled={files.length !== 2}
+                >
+                  {files.length === 2
+                    ? "Process Files"
+                    : "Select Required Files"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            renderResults()
           )}
         </>
       ) : (
-        <div className="flex flex-col items-center justify-center space-y-6 py-10">
-          <UploadAnimation status={uploadStatus} />
-
-          <div className="text-center">
-            <h3 className="text-2xl font-medium text-gray-800 mb-2">
-              {uploadStatus === "success"
-                ? "Analysis Complete!"
-                : "Processing Failed"}
-            </h3>
-            <p className="text-gray-500 mb-6">
-              {uploadStatus === "success"
-                ? "Your PDB file has been processed successfully. Reports are being generated."
-                : "There was an error processing your PDB file. Please try again."}
-            </p>
-
-            <div className="space-y-3">
-              {uploadStatus === "success" && (
-                <Button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white mb-3">
-                  View Analysis Reports
-                </Button>
-              )}
-
-              <Button
-                onClick={resetUpload}
-                variant={uploadStatus === "success" ? "outline" : "default"}
-                className={
-                  uploadStatus === "success"
-                    ? "w-full sm:w-auto border-gray-300"
-                    : "w-full sm:w-auto"
-                }
-              >
-                {uploadStatus === "success" ? "Upload Another File" : "Try Again"}
-              </Button>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <p className="text-center font-medium text-gray-700">
+            Processing files...
+          </p>
+          <Progress value={uploadProgress} className="h-2" />
+          <p className="text-center text-sm text-gray-500">
+            {uploadProgress < 100
+              ? `Analyzing docking results... ${uploadProgress}%`
+              : "Processing complete!"}
+          </p>
         </div>
       )}
     </div>

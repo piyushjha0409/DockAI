@@ -2,14 +2,16 @@
 
 import FileUploader from "@/components/FileUploader";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Boxes, FileText } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 const UploadPage = () => {
+  const [infoExpanded, setInfoExpanded] = useState(false);
+
   // Apply fade-in animation to the entire page
   useEffect(() => {
-    document.title = "Upload PDB Files - MolecularViz";
+    document.title = "Upload Docking Files - MolecularViz";
 
     const mainContent = document.getElementById("upload-page");
     if (mainContent) {
@@ -32,7 +34,7 @@ const UploadPage = () => {
       id="upload-page"
       className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-slate-50 to-white px-4 py-12 transition-opacity duration-500"
     >
-      <div className="w-full max-w-3xl mx-auto">
+      <div className="w-full max-w-4xl mx-auto">
         <div className="mb-8 flex items-center">
           <Link
             href="/"
@@ -48,57 +50,59 @@ const UploadPage = () => {
 
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">
-            Upload your file
+            Upload Autodock Vina Output Files
           </h1>
           <p className="text-gray-600 max-w-xl mx-auto">
-            Upload your molecular docking file to generate comprehensive reports
-            and visualizations. Our AI will analyze binding positions,
-            interactions, and efficacy.
+            Please upload two Autodock Vina processed files: a .txt output file and a .pdbqt file
+            to generate comprehensive reports and visualizations.
           </p>
         </div>
 
-        <Card className="border-0 shadow-smooth overflow-hidden bg-white/80 backdrop-blur-sm">
+        <Card className="border-0 shadow-smooth overflow-hidden bg-white/80 backdrop-blur-sm mb-8">
           <CardContent className="p-6 sm:p-8">
+            <div className="mb-4 p-4 bg-amber-50 rounded-md text-amber-800 text-sm">
+              <div className="flex justify-between items-center">
+                <p className="font-medium">⚠️ Important: Pre-processing Required</p>
+                <button 
+                  onClick={() => setInfoExpanded(!infoExpanded)} 
+                  className="text-amber-700 hover:text-amber-900"
+                  aria-label={infoExpanded ? "Collapse information" : "Expand information"}
+                >
+                  <ChevronDown 
+                    size={20} 
+                    className={`transform transition-transform ${infoExpanded ? "rotate-180" : ""}`} 
+                  />
+                </button>
+              </div>
+              <p className="mt-1">
+                You must process your ligand and protein files through Autodock Vina before uploading.
+                Our system expects the output files (.txt and .pdbqt) from a completed docking operation.
+              </p>
+              
+              {infoExpanded && (
+                <div className="mt-3 pt-3 border-t border-amber-200 text-amber-800/90">
+                  <h4 className="font-medium mb-2">How to generate required files:</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>Run Autodock Vina with your protein and ligand files</li>
+                    <li>After processing, collect the .txt output file containing binding affinities</li>
+                    <li>Collect the corresponding .pdbqt file with the 3D structure information</li>
+                    <li>Upload both files here to visualize and analyze results</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+            
             <FileUploader
               maxSizeMB={100}
               allowedFileTypes={[
-                ".pdb",
-                "chemical/x-pdb",
+                ".txt", 
+                ".pdbqt",
                 "application/octet-stream",
+                "text/plain"
               ]}
             />
           </CardContent>
         </Card>
-
-        <div className="mt-8 text-center space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-            <div className="bg-blue-50 rounded-lg p-4 flex items-start space-x-3">
-              <div className="text-blue-600 mt-1">
-                <FileText size={20} />
-              </div>
-              <div>
-                <h3 className="font-medium text-blue-800">Docking Reports</h3>
-                <p className="text-sm text-blue-700/80">
-                  Receive detailed analysis of binding scores, interactions, and
-                  predicted efficacy
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 rounded-lg p-4 flex items-start space-x-3">
-              <div className="text-blue-600 mt-1">
-                <Boxes size={20} />
-              </div>
-              <div>
-                <h3 className="font-medium text-blue-800">3D Visualizations</h3>
-                <p className="text-sm text-blue-700/80">
-                  Interactive 3D models of molecular interactions and binding
-                  positions
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
