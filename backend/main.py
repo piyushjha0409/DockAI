@@ -2,7 +2,6 @@ import io
 import os
 import tempfile
 from typing import Dict, List, Optional
-
 import pandas as pd
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
@@ -13,8 +12,12 @@ from utils.llm_integration import generate_docking_report
 from utils.parser import parse_autodock_results
 from utils.pdf_generator import create_pdf_report
 
+
 # New imports for visualization
 from utils.visualization import process_docking_visualization, create_visualization_data
+
+# Import the Solana CID storage function
+from utils.cid_store import store_cid_on_solana
 
 load_dotenv()
 app = FastAPI()
@@ -66,21 +69,26 @@ async def parse_docking_file(file: UploadFile = File(...)):
             raise HTTPException(
                 status_code=500, detail="Failed to upload PDF to Pinata"
             )
+            
+        # Store the CID on Solana blockchain
+        solana_tx = await store_cid_on_solana(cid)
 
         # Clean up the temporary file
         os.unlink(temp_file_path)
 
-        # Return the CID along with the PDF file
-        return {
-            "cid": cid,
-            "pdf_report": Response(
-                content=pdf_report,
-                media_type="application/pdf",
-                headers={
-                    "Content-Disposition": f"attachment; filename=docking_report_{file.filename}.pdf"
-                },
-            ),
-        }
+        # Return the CID along with the PDF file and Solana transaction details
+        response = Response(
+            content=pdf_report,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=docking_report_{file.filename}.pdf",
+                "X-CID": cid,
+                "X-Solana-Account": solana_tx["account"],
+                "X-Solana-Signature": solana_tx["store_signature"]
+            },
+        )
+        
+        return response
 
     except HTTPException as he:
         print(f"HTTP Exception: {he.detail}")

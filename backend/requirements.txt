@@ -17,3 +17,6 @@ py3dmol
 rdkit
 plotly
 python-dotenv
+solana
+anchorpy
+solders
