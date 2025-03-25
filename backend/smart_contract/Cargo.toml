@@ -1,0 +1,20 @@
+[package]
+name = "cid_storage"
+version = "0.1.0"
+description = "CID storage program for Solana"
+edition = "2021"
+
+[dependencies]
+solana-program = "1.18.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[bin]]
+name = "native_server"
+path = "src/main.rs"
+
+[features]
+no-entrypoint = []
+no-idl = []
+cpi = ["no-entrypoint"]  # Add the cpi feature
+default = []

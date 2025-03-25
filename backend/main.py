@@ -17,7 +17,7 @@ from utils.pdf_generator import create_pdf_report
 from utils.visualization import process_docking_visualization, create_visualization_data
 
 # Import the Solana CID storage function
-from utils.cid_store import store_cid_on_solana
+from utils.cid_store2 import store_cid_on_solana
 
 load_dotenv()
 app = FastAPI()
