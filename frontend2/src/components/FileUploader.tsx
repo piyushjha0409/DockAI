@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from "react";
-import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
-import { Upload, X, AlertCircle, Check, FileDown } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { AlertCircle, Check, Database, FileDown, Key, Upload, X } from "lucide-react";
+import React, { useCallback, useState } from "react";
+import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import MoleculeViewer from "./MoleculeViewer";
 
@@ -17,6 +17,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [cid, setCid] = useState("");
+  const [solanaSignature, setSolanaSignature] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [visualizationData, setVisualizationData] = useState(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -168,6 +170,9 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       clearInterval(interval);
       setUploadProgress(100);
 
+      if (data.cid) setCid(data.cid);
+      if (data.solana_signature) setSolanaSignature(data.solana_signature);
+
       // Process PDF report
       if (data.pdf_report_base64) {
         const pdfData = new Uint8Array(
@@ -259,60 +264,75 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     if (!visualizationData && !pdfUrl) return null;
 
     return (
-      <div className="mt-8 space-y-6 bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-bold text-gray-900">Analysis Results</h2>
+      <div className="mt-8 space-y-6 bg-white rounded-lg  p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Analysis Results</h2>
+        
+        {/* Verification and Report section */}
+        <div className="flex flex-col lg:flex-row gap-6 mb-6">
+          {/* Blockchain verification info */}
+          {(cid || solanaSignature) && (
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100 flex-1">
+              <h3 className="text-lg font-medium text-blue-900 mb-2">Blockchain Verification</h3>
+              <div className="space-y-2">
+                {cid && (
+                  <div className="flex items-start">
+                    <Database className="h-5 w-5 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">IPFS Content ID</p>
+                      <p className="text-xs text-blue-700 font-mono break-all">{cid}</p>
+                    </div>
+                  </div>
+                )}
+                {solanaSignature && (
+                  <div className="flex items-start">
+                    <Key className="h-5 w-5 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Solana Signature</p>
+                      <p className="text-xs text-blue-700 font-mono break-all">{solanaSignature}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
+          {/* Detailed Report section */}
+          {pdfUrl && (
+            <div className="bg-green-50 rounded-lg p-4 border border-green-100 flex-1">
+              <h3 className="text-lg font-medium text-green-900 mb-2">Detailed Report</h3>
+              <p className="text-sm text-green-800 mb-3">Download or view the complete analysis report with detailed metrics.</p>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={pdfUrl}
+                  download="docking_report.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-3 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                >
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Download PDF Report
+                </a>
+                <a
+                  href={pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  View Report
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+        
         {visualizationData && (
           <div className="space-y-4">
-            <MoleculeViewer
-              modelData={visualizationData}
-              activeModel={activeModel}
-              containerRef={containerRef}
-            />
-            {visualizationData.length > 1 && (
-              <div className="mt-2 flex space-x-2">
-                {visualizationData.map((_model: unknown, index: number) => (
-                  <button
-                    key={index}
-                    className={`px-3 py-1 text-sm rounded ${
-                      activeModel === index
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-200 hover:bg-gray-300"
-                    }`}
-                    onClick={() => setActiveModel(index)}
-                  >
-                    Model {index + 1}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {pdfUrl && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium text-gray-800">
-              Detailed Report
-            </h3>
-            <div className="flex space-x-4">
-              <a
-                href={pdfUrl}
-                download="docking_report.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <FileDown className="mr-2 h-4 w-4" />
-                Download PDF Report
-              </a>
-              <a
-                href={pdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                View Report
-              </a>
+            <div ref={containerRef} style={{ width: "100%", minHeight: "500px" }}>
+              <MoleculeViewer
+                modelData={visualizationData}
+                activeModel={activeModel}
+                containerRef={containerRef}
+              />
             </div>
           </div>
         )}
@@ -323,8 +343,10 @@ const FileUploader: React.FC<FileUploaderProps> = ({
             setFiles([]);
             setVisualizationData(null);
             setPdfUrl(null);
+            setCid("");
+            setSolanaSignature("");
           }}
-          className="mt-4"
+          className="mt-6"
         >
           Process Another Docking Result
         </Button>

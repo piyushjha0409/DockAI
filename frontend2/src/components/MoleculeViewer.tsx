@@ -164,9 +164,38 @@ const getElementColor = (element: string): string => {
 const MoleculeViewer: React.FC<Mol3DViewerProps> = ({ modelData }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeModel, setActiveModel] = useState<number>(0);
+  const [showGrid, setShowGrid] = useState<boolean>(true);
+  // Create an array of refs for each model container in grid view
+  const modelRefsArray = useRef<(HTMLDivElement | null)[]>([]);
 
-  const handleModelChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setActiveModel(parseInt(event.target.value));
+  // Initialize the refs array when models change
+  useEffect(() => {
+    if (modelData && modelData.models) {
+      modelRefsArray.current = Array(modelData.models.length).fill(null);
+    }
+  }, [modelData]);
+
+  // Calculate the binding energy range
+  const minEnergy = Math.min(...modelData.models.map(m => m.binding_affinity));
+  const maxEnergy = Math.max(...modelData.models.map(m => m.binding_affinity));
+  
+  // Function to get color based on binding energy (green for best/lowest, red for worst/highest)
+  const getEnergyColor = (energy: number) => {
+    if (minEnergy === maxEnergy) return "#4ade80"; // Green if all same
+    
+    // Normalize between 0 and 1 (0 being the best/lowest energy, 1 being the worst/highest)
+    const normalized = (energy - minEnergy) / (maxEnergy - minEnergy);
+    
+    // Interpolate between green (best) and amber (worst)
+    const r = Math.round(normalized * 239 + (1 - normalized) * 74);
+    const g = Math.round(normalized * 68 + (1 - normalized) * 222);
+    const b = Math.round(normalized * 68 + (1 - normalized) * 128);
+    
+    return `rgb(${r}, ${g}, ${b})`;
+  };
+
+  const toggleView = () => {
+    setShowGrid(!showGrid);
   };
 
   if (!modelData) {
@@ -174,56 +203,136 @@ const MoleculeViewer: React.FC<Mol3DViewerProps> = ({ modelData }) => {
   }
 
   return (
-    <div className="molecule-viewer bg-white rounded-lg shadow-md p-6">
-      <div className="viewer-controls mb-4">
-        <h3 className="text-xl font-semibold mb-2">
-          Binding Affinity: {modelData.models[activeModel]?.binding_affinity}{" "}
-          kcal/mol
-        </h3>
-        <div className="flex items-center">
-          <label className="flex items-center mr-4">
-            <span className="mr-2">Select Model:</span>
-            <select
-              value={activeModel}
-              onChange={handleModelChange}
-              className="border border-gray-300 rounded px-2 py-1"
-            >
-              {modelData.models.map((model, index) => (
-                <option key={model.model_id} value={index}>
-                  Model {model.model_id} ({model.binding_affinity} kcal/mol)
-                </option>
-              ))}
-            </select>
-          </label>
+    <div className="molecule-viewer bg-white rounded-lg">
+      <div className="viewer-header mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xl font-semibold">
+            Molecular Docking Results
+          </h3>
+          <Button 
+            onClick={toggleView} 
+            variant="outline" 
+            size="sm"
+            className="text-xs px-2 py-1"
+          >
+            {showGrid ? "Single View" : "Grid View"}
+          </Button>
+        </div>
+        
+        <div className="mt-2 bg-blue-50 p-3 rounded-md">
+          <p className="text-sm font-medium">
+            Best binding energy: <span className="text-green-600 font-bold">{modelData.summary.best_binding_affinity} kcal/mol</span>
+          </p>
+          <p className="text-sm">
+            Total models: {modelData.summary.model_count}
+          </p>
         </div>
       </div>
 
-      <div
-        ref={containerRef}
-        className="molecule-container border border-gray-200 rounded relative"
-        style={{ 
-          width: "100%", 
-          height: "400px", 
-          position: "relative", 
-          overflow: "hidden" 
-        }}
-      >
-        <Mol3DViewer
-          modelData={modelData}
-          activeModel={activeModel}
-          containerRef={containerRef}
-        />
-      </div>
-
-      <div className="binding-info mt-4 p-4 bg-gray-50 rounded">
-        <h4 className="text-lg font-medium mb-2">Summary</h4>
-        <p>
-          Best binding energy: {modelData.summary.best_binding_affinity}{" "}
-          kcal/mol
-        </p>
-        <p>Number of models: {modelData.summary.model_count}</p>
-      </div>
+      {showGrid ? (
+        // Grid view - all models
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {modelData.models.map((model, index) => (
+            <div 
+              key={model.model_id} 
+              className="model-card border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+              onClick={() => setActiveModel(index)}
+            >
+              <div 
+                className="p-2 text-white font-medium text-sm" 
+                style={{ backgroundColor: getEnergyColor(model.binding_affinity) }}
+              >
+                Model {model.model_id} | {model.binding_affinity} kcal/mol
+              </div>
+              <div
+                className="molecule-container relative"
+                style={{ height: "200px" }}
+              >
+                <div 
+                  ref={el => { modelRefsArray.current[index] = el; }}
+                  className="absolute inset-0"
+                >
+                  {/* Render all models in grid view, not just the active one */}
+                  <Mol3DViewer
+                    modelData={modelData}
+                    activeModel={index}
+                    containerRef={{ current: modelRefsArray.current[index] }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        // Single selected model view
+        <div className="single-model-view">
+          <div className="flex flex-wrap gap-2 mb-3">
+            {modelData.models.map((model, index) => (
+              <button
+                key={model.model_id}
+                className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                  activeModel === index
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                }`}
+                onClick={() => setActiveModel(index)}
+              >
+                Model {model.model_id}
+              </button>
+            ))}
+          </div>
+          
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div 
+              className="p-2 text-white font-medium"
+              style={{ backgroundColor: getEnergyColor(modelData.models[activeModel].binding_affinity) }}
+            >
+              Binding Energy: {modelData.models[activeModel].binding_affinity} kcal/mol
+            </div>
+            <div
+              ref={containerRef}
+              className="molecule-container relative"
+              style={{ height: "400px" }}
+            >
+              <Mol3DViewer
+                modelData={modelData}
+                activeModel={activeModel}
+                containerRef={containerRef}
+              />
+            </div>
+          </div>
+          
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm">
+            <p>Atoms: {modelData.models[activeModel].atoms.length}</p>
+            <p>Bonds: {modelData.models[activeModel].bonds.length}</p>
+          </div>
+        </div>
+      )}
     </div>
+  );
+};
+
+// Helper component for Button since it was used but not imported
+const Button: React.FC<{
+  onClick?: () => void;
+  variant?: 'default' | 'outline';
+  size?: 'default' | 'sm';
+  className?: string;
+  children: React.ReactNode;
+}> = ({ onClick, variant = 'default', size = 'default', className = '', children }) => {
+  const baseClasses = "rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500";
+  const variantClasses = variant === 'outline' 
+    ? "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" 
+    : "bg-blue-600 text-white hover:bg-blue-700";
+  const sizeClasses = size === 'sm' ? "px-3 py-1 text-sm" : "px-4 py-2";
+  
+  return (
+    <button
+      onClick={onClick}
+      className={`${baseClasses} ${variantClasses} ${sizeClasses} ${className}`}
+    >
+      {children}
+    </button>
   );
 };
 

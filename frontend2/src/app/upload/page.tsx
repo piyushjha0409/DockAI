@@ -34,7 +34,7 @@ const UploadPage = () => {
       id="upload-page"
       className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-slate-50 to-white px-4 py-12 transition-opacity duration-500"
     >
-      <div className="w-full max-w-4xl mx-auto">
+      <div className="w-full max-w-5xl mx-auto">
         <div className="mb-8 flex items-center">
           <Link
             href="/"
