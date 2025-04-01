@@ -16,11 +16,9 @@ The **Docking Insight Agent** transforms raw molecular docking results into **in
 ## 🔥 Key Features
 | Feature | Description |
 |---------|-------------|
-| **Automated Reporting** | 📄 Generate PDF/HTML reports with docking scores, binding efficiencies, and drug predictions. |
+| **Automated Reporting** | 📄 Generate PDF reports with docking scores, binding efficiencies, and drug predictions. |
 | **3D Visualization** | 🎨 Interactive molecular binding site explorer with customizable hotspots. |
 | **Solana Blockchain** | 🔗 Decentralized data integrity via Solana’s agentic framework. |
-| **Modular Design** | ⚙️ Plug-and-play integration with existing drug discovery pipelines. |
-
 ---
 
 ## 🏗 Architecture
@@ -29,7 +27,7 @@ graph TD
   A[Raw Docking Data] --> B(Data Processing Module)
   B --> C[Report Generator]
   B --> D[Visualization Engine]
-  C --> E[PDF/HTML Reports]
+  C --> E[PDF Reports]
   D --> F[3D Interactive Viewer]
   E & F --> G[Solana Blockchain]
 
@@ -45,7 +43,6 @@ Ensure you have the following installed:
 | **Python**      | 3.8 or higher     | [Python Official](https://www.python.org/downloads/) |
 | **Node.js**     | 16.x or later     | [Node.js Docs](https://nodejs.org/)    |
 | **Solana CLI**  | Latest stable     | [Solana CLI Guide](https://docs.solana.com/cli/install-solana-cli-tools) |
-| **Docker**      | (Optional)        | [Docker Docs](https://docs.docker.com/get-docker/) |
 
 ---
 
@@ -53,39 +50,36 @@ Ensure you have the following installed:
 
 #### 1. **Clone the Repository**
 ```bash
-git clone https://github.com/NeuraViva/docking-insight-agent.git
-cd docking-insight-agent
+git clone https://github.com/piyushjha0409/ai-docking-1
+cd ai-docking-1
 ```
 
-# Create and activate a virtual environment
+#### 2. Create and activate a virtual environment (Terminal 1)
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# For Windows: venv\Scripts\activate
+cd backend
+python -m venv .venv # OR python3 -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# For Windows: .venv\Scripts\activate
 ```
 
-# Install Python dependencies
+#### 3. Install Python dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-# Run the frontnend
+#### 4. Run the backend
+```bash
+uvicorn main:app --reload 
+```
+
+#### 5. Run the frontend (Terminal 2)
 ```bash
 cd frontend
 npm install
-cd ..
+npm run dev
 ```
+#### 6. Access the application
+Open your web browser and navigate to `http://localhost:3000` to access the frontend. 
 
-# Configure Solana blockchain
-```bash
-# Set Solana network (devnet for testing)
-solana config set --url devnet
-
-# Verify configuration
-solana config get
-```
-
-# Run the application 
-```bash 
-python app.py
-```
+#### 7. Upload your data
+For sample data, you can use the provided `sample_data` folder and upload both the files to the application. The application will process the data and generate a report and visualization.

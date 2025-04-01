@@ -3,7 +3,10 @@ import logging
 from typing import Any, Dict, List
 
 import google.generativeai as genai
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -22,9 +25,10 @@ def generate_docking_report(docking_results: List[Dict[str, Any]]) -> Dict[str, 
     Returns:
         Dictionary containing the structured report
     """
+    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
     try:
         # Initialize the Gemini model
-        api_key = "AIzaSyBzRAnoVD7l3yGOWYJhBdd4MB6pePx7DYs"  # Add your API key here
+        api_key = GEMINI_KEY  # Add your API key here
         if not api_key:
             logger.error("No Google API key provided")
             return {"error": "API key is required", "status": "failed"}
