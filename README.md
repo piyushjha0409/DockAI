@@ -6,6 +6,8 @@
 
 **An AI-powered framework for automated molecular docking analysis, reporting, and blockchain-secured visualization.**  
 
+https://github.com/user-attachments/assets/552126a2-1620-4116-a899-58d3cb4623ea
+
 ---
 
 ## 🌟 Overview
