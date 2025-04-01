@@ -50,8 +50,8 @@ Ensure you have the following installed:
 
 #### 1. **Clone the Repository**
 ```bash
-git clone https://github.com/piyushjha0409/ai-docking-1
-cd ai-docking-1
+git clone https://github.com/piyushjha0409/DockAI
+cd DockAI
 ```
 
 #### 2. Create and activate a virtual environment (Terminal 1)
