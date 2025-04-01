@@ -8,8 +8,6 @@
 
 https://github.com/user-attachments/assets/552126a2-1620-4116-a899-58d3cb4623ea
 
----
-
 ## 🌟 Overview
 The **Docking Insight Agent** transforms raw molecular docking results into **interactive reports, visualizations, and drug efficacy predictions**. Designed for computational drug discovery, it integrates with Solana’s blockchain for **secure, scalable, and tamper-proof data management**.
 
